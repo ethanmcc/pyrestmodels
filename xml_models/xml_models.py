@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 """
 Copyright 2009 Chris Tarttelin and Point2 Technologies
 
@@ -26,13 +27,16 @@ authors and should not be interpreted as representing official policies, either 
 or implied, of the FreeBSD Project.
 """
 
-__doc__="""Based on Django Database backed models, provides a means for mapping models 
+__doc__="""Based on Django Database backed models, provides a means for mapping models
 to xml, and specifying finders that map to a remote REST service.  For parsing XML
-XPath expressions, xml_models attempts to use lxml if it is available.  If not, it 
+XPath expressions, xml_models attempts to use lxml if it is available.  If not, it
 uses pyxml_xpath.  Better performance will be gained by installing lxml."""
 
 import re, datetime, time
-import xpath_twister as xpath
+import xml_models.xpath_twister as xpath
+
+from six import add_metaclass
+
 from common_models import *
 
 
@@ -40,29 +44,29 @@ class XmlValidationError(Exception):
     pass
 
 class BaseField:
-    """All fields must specify an xpath as a keyword arg in their constructor.  Fields may optionally specify a 
+    """All fields must specify an xpath as a keyword arg in their constructor.  Fields may optionally specify a
     default value using the default keyword arg."""
     def __init__(self, **kw):
-        if not kw.has_key('xpath'):
+        if not 'xpath' in kw:
             raise Exception('No XPath supplied for xml field')
         self.xpath = kw['xpath']
         self._default = kw.pop('default', None)
-            
-    
+
+
     def _fetch_by_xpath(self, xml_doc, namespace):
         find = xpath.find_unique(xml_doc, self.xpath, namespace)
         if find == None:
             return self._default
         return find
 
-    
+
     def _parse(self, xml, namespace):
         try:
             return self.__cached_value
         except:
             self.__cached_value = self.parse(xml, namespace)
             return self.__cached_value
-    
+
 class CharField(BaseField):
     """Returns the single value found by the xpath expression, as a string"""
     def parse(self, xml, namespace):
@@ -75,22 +79,22 @@ class IntField(BaseField):
         if value:
             return int(value)
         return self._default
-    
+
 class DateField(BaseField):
     """
     Returns the single value found by the xpath expression, as a datetime. By default, expects
     dates that match the ISO date format (same as Java JAXB supplies).  If a date_format keyword
     arg is supplied, that will be used instead.  Uses datetime.strptime under the hood, so the
     date_format should be defined according to strptime rules.
-    
-    We sometimes get dates that include a UTC offset.  We don't have a nice way to handle these, 
+
+    We sometimes get dates that include a UTC offset.  We don't have a nice way to handle these,
     so for now we are going to strip the offset and throw it away"""
     match_utcoffset = re.compile(r"(^.*?)[+|-]\d{2}:\d{2}$")
-    
+
     def __init__(self, date_format="%Y-%m-%dT%H:%M:%S", **kw):
         BaseField.__init__(self,**kw)
         self.date_format = date_format
-        
+
     def parse(self, xml, namespace):
         value = self._fetch_by_xpath(xml, namespace)
         if value:
@@ -99,7 +103,7 @@ class DateField(BaseField):
                 value = utc_stripped[0]
             try:
                 return datetime.datetime.strptime(value, self.date_format)
-            except ValueError, msg:
+            except ValueError as msg:
                 if "%S" in self.date_format:
                     msg = str(msg)
                     rematch = re.match(r"unconverted data remains:"
@@ -121,7 +125,7 @@ class DateField(BaseField):
                             return value.replace(microsecond=microsecond)
                 raise
         return self._default
-        
+
 class FloatField(BaseField):
     """Returns the single value found by the xpath expression, as a float"""
     def parse(self, xml, namespace):
@@ -149,47 +153,49 @@ class Collection(BaseField):
         self.field_type = field_type
         self.order_by = order_by
         BaseField.__init__(self,**kw)
-        
+
     def parse(self, xml, namespace):
         matches = xpath.find_all(xml, self.xpath, namespace)
 
         if not BaseField in self.field_type.__bases__:
-            
+
             results = [self.field_type(xml=match) for match in matches]
         else:
             field = self.field_type(xpath = '.')
             results = [field.parse(xpath.domify(match), namespace) for match in matches]
         if self.order_by:
-            results.sort(lambda a,b : cmp(getattr(a, self.order_by), getattr(b, self.order_by)))
+            results.sort(key=lambda item: getattr(item, self.order_by))
         return results
-    
+
 CollectionField = Collection
 
 class OneToOneField(BaseField):
     def __init__(self, field_type, **kw):
         self.field_type = field_type
         BaseField.__init__(self,**kw)
-        
+
     def parse(self, xml, namespace):
         match = xpath.find_all(xml, self.xpath, namespace)
         if len(match) == 1:
             return self.field_type(xml=match[0])
         return None
-        
+
+
 class ModelBase(type):
     "Meta class for declarative xml_model building"
     def __init__(cls, name, bases, attrs):
+        print('MODELBASE')
         xml_fields = [field_name for field_name in attrs.keys() if isinstance(attrs[field_name], BaseField)]
         for field_name in xml_fields:
             setattr(cls, field_name, cls._get_xpath(field_name, attrs[field_name]))
             attrs[field_name]._name = field_name
-        if attrs.has_key("finders"):
+        if 'finders' in attrs:
             setattr(cls, "objects", ModelManager(cls, attrs["finders"]))
         else:
             setattr(cls, "objects", ModelManager(cls, {}))
-        if attrs.has_key("headers"):
+        if 'headers' in attrs:
             setattr(cls.objects, "headers", attrs["headers"])
-    
+
     def _get_xpath(cls, field_name, field_impl):
         return property(fget=lambda cls: cls._parse_field(field_impl), fset=lambda cls, value : cls._set_value(field_impl, value))
 
@@ -197,13 +203,13 @@ XmlModelManager = ModelManager
 XmlModelQuery = ModelQuery
 
 
+@add_metaclass(ModelBase)
 class Model:
-    __metaclass__ = ModelBase
     __doc__="""A model can be constructed with either an xml string, or an appropriate document supplied by
     the xpath_twister.domify() method.
-    
+
     An example:
-    
+
     class Person(xml_models.Model):
         namespace="urn:my.default.namespace"
         name = xml_models.CharField(xpath"/Person/@Name", default="John")
@@ -227,17 +233,17 @@ class Model:
         if self._dom is None:
             try :
                 self._dom = xpath.domify(self._xml or '<x/>')
-            except Exception, e:
-                print self._xml
-                print str(e)
+            except Exception as e:
+                print(self._xml)
+                print(str(e))
                 raise e
         return self._dom
-        
+
     def _set_value(self, field, value):
         self._cache[field] = value
-        
+
     def _parse_field(self, field):
-        if not self._cache.has_key(field):
+        if field not in self._cache:
             namespace = None
             if hasattr(self, 'namespace'):
                 namespace = self.namespace

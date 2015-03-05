@@ -28,12 +28,16 @@ or implied, of the FreeBSD Project.
 
 import json, time
 from datetime import datetime
+from functools import cmp_to_key
+
+from six import add_metaclass
+
 from common_models import *
 
 
 class BaseField:
     def __init__(self, **kw):
-        if not kw.has_key('path'):
+        if 'path' not in kw:
             raise Exception('No Path supplied for json field')
         self.path = kw['path']
         self._default = kw.pop('default', None)
@@ -95,7 +99,7 @@ class Collection(BaseField):
         elif matches:
             results = matches
         if self.order_by:
-            results.sort(lambda a,b : cmp(getattr(a, self.order_by), getattr(b, self.order_by)))
+            results.sort(key=lambda item: getattr(item, self.order_by))
         return results
 
 CollectionField = Collection
@@ -106,21 +110,20 @@ class ModelBase(type):
         for field_name in fields:
             setattr(cls, field_name, cls._get_path(field_name, attrs[field_name]))
             attrs[field_name]._name = field_name
-        if attrs.has_key("finders"):
+        if 'finders' in attrs:
             setattr(cls, "objects", ModelManager(cls, attrs["finders"]))
         else:
             setattr(cls, "objects", ModelManager(cls, {}))
-        if attrs.has_key("headers"):
+        if 'headers' in attrs:
             setattr(cls.objects, "headers", attrs["headers"])
 
     def _get_path(cls, field_name, field_impl):
         return property(fget=lambda cls: cls._parse_field(field_impl),fset=lambda cls, value : cls._set_field(field_impl, value) )
 
+@add_metaclass(ModelBase)
 class Model:
-    __metaclass__ = ModelBase
-
     def __init__(self,json_data=None,**kw):
-        if kw.has_key('json'):
+        if 'json' in kw:
             self._json = AttrDict(kw['json'])
         else:
             try:

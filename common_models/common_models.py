@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import rest_client
 from xml.etree import ElementTree as et
 
@@ -35,7 +37,7 @@ class ModelQuery(object):
     def __init__(self, manager, model, headers={}):
         self.manager = manager
         self.model = model
-        self.args = {}
+        self.args = OrderedDict()
         self.headers = headers
         if 'xml_models' in str(model.__class__):
             self._fragments = self._xml_fragments
@@ -83,8 +85,8 @@ class ModelQuery(object):
 
     def _xml_fragments(self, xml):
         tree = et.iterparse(xml, ['start','end'])
-        tree.next()
-        evt, child = tree.next()
+        next(tree)
+        evt, child = next(tree)
         node_name = child.tag
         for event, elem in tree:
             if event == 'end' and elem.tag == node_name:
@@ -99,7 +101,7 @@ class ModelQuery(object):
     def _find_query_path(self):
         if hasattr(self, 'custom_url'):
             return self.custom_url
-        keys = self.args.keys()
+        keys = list(self.args.keys())
         keys.sort()
         key_tuple = tuple(keys)
         try:

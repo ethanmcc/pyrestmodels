@@ -25,8 +25,16 @@ The views and conclusions contained in the software and documentation are those 
 authors and should not be interpreted as representing official policies, either expressed
 or implied, of the FreeBSD Project.
 """
-import BaseHTTPServer, cgi, threading, re, urllib, httplib
-import unittest, urllib, urllib2, time
+try:
+    import BaseHTTPServer
+    import httplib
+    from urllib2 import HTTPHandler, OpenerDirector, Request
+except ImportError:
+    import http.client as httplib
+    import http.server as BaseHTTPServer
+    from urllib.request import HTTPHandler, OpenerDirector, Request
+import cgi, threading, re, urllib
+import unittest, urllib, time
 from unittest import TestCase
 import sys
 
@@ -59,7 +67,7 @@ class StoppableHTTPServer(BaseHTTPServer.HTTPServer):
 
 if sys.version_info[0] == 2 and sys.version_info[1] < 6:
     HTTPServer = StoppableHTTPServer
-    print "Using stoppable server"
+    print("Using stoppable server")
 else:
     HTTPServer = BaseHTTPServer.HTTPServer
 
@@ -126,7 +134,7 @@ class StubResponse(BaseHTTPServer.BaseHTTPRequestHandler):
         BaseHTTPServer.BaseHTTPRequestHandler.__init__(self, request, clientaddress, parent)
 
     def _get_data(self):
-        if self.headers.has_key("content-length"):
+        if 'content-length' in self.headers:
             size_remaining = int(self.headers["content-length"])
             return self._read_chunk(size_remaining)
         elif self.headers.get('Transfer-Encoding', "") == "chunked":
@@ -212,7 +220,10 @@ class StubResponse(BaseHTTPServer.BaseHTTPRequestHandler):
                 self.send_response(exp.response[0], "Python")
                 self.send_header("Content-Type", exp.response[1])
                 self.end_headers()
-                self.wfile.write(exp.response[2])
+                if sys.version >= '3':
+                    self.wfile.write(bytes(exp.response[2], 'UTF-8'))
+                else:
+                    self.wfile.write(exp.response[2])
                 data = self._get_data()
                 exp.satisfied = True
                 exp.data_capture["body"] = data

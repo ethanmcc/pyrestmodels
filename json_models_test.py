@@ -29,7 +29,10 @@ or implied, of the FreeBSD Project.
 import unittest, json
 from datetime import datetime
 from mock import patch
-from StringIO import StringIO
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
 from json_models import *
 from common_models import *
 
@@ -56,8 +59,8 @@ class MyModel(Model):
     muppet_addresses = Collection(Address, path='kiddie.address', order_by='number')
 
     finders = {
-                (muppet_name,): "http://foo.com/muppets/%s"
-              }
+        (muppet_name,): "http://foo.com/muppets/%s"
+    }
 
 class Simple(Model):
     field1 = CharField(path='field1')
@@ -84,7 +87,7 @@ class MyValidatingModel(Model):
     finders = {
                 (muppet_name,): "http://foo.com/muppets/%s"
               }
-    
+
 
 
 class JsonModelsTest(unittest.TestCase):
@@ -93,7 +96,7 @@ class JsonModelsTest(unittest.TestCase):
         field = CharField(path="kiddie.value")
         response = field.parse(json_data)
         self.assertEquals('Muppets rock', response)
-        
+
     def test_int_returns_value_for_item_passed_in(self):
         json_data = AttrDict(json.loads('{"kiddie":{"value":30}}'))
         field = IntField(path="kiddie.value")
@@ -193,7 +196,7 @@ class JsonModelsTest(unittest.TestCase):
     def test_collection_empty_collection_returned_when_json_not_found(self):
         my_model = MyModel('{"kiddie":{ "address": [{"number" :10,"street": "1st Ave. South", "city": "MuppetVille"},{"number": 5, "street": "Mockingbird Lane", "city": "Bedrock"}]}}')
         self.assertEquals([], my_model.muppet_addresses[0].foobars)
-        
+
     def test_can_set_charfield_to_model(self):
         my_model = MyModel('{"kiddie":{"muppet_name":"Gonzo"}}')
         my_model.muppet_name = "Kermit"
@@ -219,7 +222,7 @@ class JsonModelsTest(unittest.TestCase):
         try:
             MyModel.objects.filter(foo="bar").count()
             self.fail("expected NoRegisteredFinderError")
-        except NoRegisteredFinderError, e:
+        except NoRegisteredFinderError as e:
             self.assertTrue("foo" in str(e))
 
     def test_should_handle_models_with_no_data(self):
@@ -286,7 +289,7 @@ class JsonModelsTest(unittest.TestCase):
         try:
             MyModel.objects.get(muppet_name="baz")
             self.fail("Expected DoesNotExist")
-        except DoesNotExist, e:
+        except DoesNotExist as e:
             self.assertTrue("DoesNotExist" in str(e))
 
     @patch.object(rest_client.Client, "GET")
@@ -298,7 +301,7 @@ class JsonModelsTest(unittest.TestCase):
         try:
             MyModel.objects.get(muppet_name="baz")
             self.fail("Expected DoesNotExist")
-        except DoesNotExist, e:
+        except DoesNotExist as e:
             self.assertTrue("DoesNotExist" in str(e))
 
     @patch.object(rest_client.Client, "GET")
@@ -310,7 +313,7 @@ class JsonModelsTest(unittest.TestCase):
         try:
             MyValidatingModel.objects.get(muppet_name="baz")
             self.fail("Expected ValidationError")
-        except ValidationError, e:
+        except ValidationError as e:
             self.assertEquals("Invalid JSON", str(e))
 
     @patch.object(rest_client.Client, "GET")
@@ -322,7 +325,7 @@ class JsonModelsTest(unittest.TestCase):
         try:
             MyValidatingModel.objects.get(muppet_name="baz")
             self.fail("Expected ValidationError")
-        except ValidationError, e:
+        except ValidationError as e:
             self.assertEquals("What, no muppet name?", str(e))
 
     @patch.object(rest_client.Client, "GET")
